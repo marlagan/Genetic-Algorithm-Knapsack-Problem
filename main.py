@@ -35,7 +35,7 @@ class GeneticAlgorithm():
     def fitness_function(self, chromosome):
         weight = sum([self.weights[i] * chromosome[i] for i in range(len(chromosome))])
         value = sum([self.values[i] * chromosome[i] for i in range(len(chromosome))])
-        return value if weight <= 35 else 0
+        return value if weight <= 180 else 0
 
     def init_population(self):
         return np.random.randint(2, size=(self.population_size, self.chromosome_length))
