@@ -6,7 +6,9 @@ import numpy as np
 from matplotlib import pyplot as plt
 from collections import defaultdict
 import random
+
 for_combinations = []
+
 class GeneticAlgorithm():
     def __init__(self, population_size, chromosome_length, mutation_rate, crossover_rate, eliticism_rate, iterations, selection_type=1, crossover_type=1):
         self.population_size = population_size
