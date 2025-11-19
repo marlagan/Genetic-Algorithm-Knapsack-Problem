@@ -1,9 +1,12 @@
 from random import random
 import time
-import csv
 import pandas as pd
 import os
 import numpy as np
+from matplotlib import pyplot as plt
+from collections import defaultdict
+import random
+for_combinations = []
 class GeneticAlgorithm():
     def __init__(self, population_size, chromosome_length, mutation_rate, crossover_rate, eliticism_rate, iterations, selection_type=1, crossover_type=1):
         self.population_size = population_size
@@ -42,8 +45,8 @@ class GeneticAlgorithm():
         return new_chromosome1, new_chromosome2
 
     def dual_crossover(self, chromosome1, chromosome2):
-        child1 = chromosome1.deepcopy()
-        child2 = chromosome1.deepcopy()
+        child1 = chromosome1.copy()
+        child2 = chromosome1.copy()
         crossover_point = np.random.randint(1, self.chromosome_length - 2)
         second_crossover_point = np.random.randint(crossover_point + 1, self.chromosome_length - 1)
         child1[crossover_point:second_crossover_point] = chromosome2[crossover_point:second_crossover_point]
@@ -158,25 +161,54 @@ class GeneticAlgorithm():
         df2.to_csv(filename, index=False)
         return chromosome, sum(values_objects), names_objects, time_exec, average_population_history
 
-    def analyse_results(self, data):
-        all_files = os.listdir(".")
-        result_files = [f for f in all_files if f.startswith('final_results') and f.endswith('.csv')]
-        output = []
-        for file in result_files:
-            df = pd.read_csv(file)
-            data = df.tolist()
-            max_value = max(data)
-            min_value = min(data)
-            mean = sum(data)/len(data)
-            if len(data) % 2 == 0:
-                median = sum(data[len(data)/2-1:len(data)/2])
-            else:
-                median = data[len(data)/2]
-            #for population?
-            standard_deviation =  np.std(data)
-            output.append(max_value, min_value, mean, median, standard_deviation)
-            print(f"max wartość: {max_value}, min wartość: {min_value}, mean: {mean}, median: {median}, standard deviation: {standard_deviation}")
-        return output
+def analyse_results():
+    all_files = os.listdir(".")
+    result_files = [f for f in all_files if f.startswith('final_results') and f.endswith('.csv')]
+    summary_rows = []
+    for file in result_files:
+        df = pd.read_csv(file)
+        best_values = df['Best_value'].values.tolist()
+        max_value = np.max(best_values)
+        min_value = np.min(best_values)
+        mean_value = np.mean(best_values)
+        median_value = np.median(best_values)
+        std_value = np.std(best_values)
+        Pc = df["Pc"].iloc[0]
+        Pm = df["Pm"].iloc[0]
+        N = df["N"].iloc[0]
+        T = df["T"].iloc[0]
+        summary_rows.append({
+            "File": file,
+            "Pc": Pc,
+            "Pm": Pm,
+            "N": N,
+            "T": T,
+            "Max": max_value,
+            "Min": min_value,
+            "Mean": mean_value,
+            "Median": median_value,
+            "Std": std_value
+        })
+        print(f" Pc={Pc}, Pm={Pm}, N={N}, T={T}")
+        print(f" Max={max_value}")
+        print(f" Min={min_value}")
+        print(f" Mean={mean_value}")
+        print(f" Median={median_value}")
+        print(f" Std={std_value}")
+
+    summary_df = pd.DataFrame(summary_rows)
+    i = 1
+    filename_csv = "result_for_chart.csv"
+    filename_table = "result_for_chart.txt"
+    while os.path.exists(filename_csv) or os.path.exists(filename_table):
+        filename_csv = f"result_for_chart{i}.csv"
+        filename_table = f"result_for_chart{i}.txt"
+        i += 1
+    summary_df.to_csv(filename_csv, index=False)
+    with open(filename_table, "w", encoding="utf-8") as f:
+        f.write(summary_df.to_string(index=False))
+
+    return summary_df
 
 def save_best_results():
     data = []
@@ -184,34 +216,139 @@ def save_best_results():
     result_files = [f for f in all_files if f.startswith('results') and f.endswith('.csv')]
     if not result_files:
         print("Nie znaleziono plików results*.csv")
-    else:
-        for file in result_files:
-            df = pd.read_csv(file)
-            data.append(df.iloc[-1].tolist())
-    df2 = pd.DataFrame(data)
+        return
+    headers = [
+        "Pc",
+        "Pm",
+        "N",
+        "T",
+        "Best_chromosome",
+        "Best_value",
+        "Best_items",
+        "Worst_chromosome",
+        "Worst_value",
+        "Time_exec"
+    ]
+    best_output = 0
+    best_file = None
+    for file in result_files:
+        df = pd.read_csv(file)
+        if float(df.iloc[-1]['Best_value']) > best_output:
+            best_output = df.iloc[-1]['Best_value']
+            best_file = file
+        last_row = df.iloc[-1].tolist()
+        data.append(last_row)
+    df2 = pd.DataFrame(data, columns=headers)
     filename = "final_results.csv"
+    filename_table = f"final_results.txt"
     i = 1
     while os.path.exists(filename):
-        filename = f'final_results{i}.csv'
+        filename = f"final_results{i}.csv"
+        filename_table = f"final_results{i}.txt"
         i += 1
     df2.to_csv(filename, index=False)
+    with open(filename_table, "w", encoding="utf-8") as f:
+        f.write(df2.to_string(index=False))
+    create_chart_in_time(best_file)
+    return df2
+
+def create_chart_in_time(filename):
+    df = pd.read_csv(filename)
+    last_row = df.iloc[-1]
+    plt.plot(range(1, last_row['T'] + 1), df['Best_value'])
+    plt.xlabel("Iteracja")
+    plt.ylabel("Najlepszy wynik")
+    plt.title("Zmiany najlepszego rozwiązania w czasie")
+    plt.grid(True)
+    chart_filename = "chart.png"
+    i = 1
+    while os.path.exists(chart_filename):
+        chart_filename = f"chart{i}.png"
+        i += 1
+    plt.savefig(chart_filename)
+    plt.show()
+
+def create_chart_param_comparison():
+    df = pd.read_csv("result_for_chart.csv")
+    for param in ['Pc', 'Pm', 'N', 'T']:
+        plt.figure(figsize=(8, 6))
+        for value in sorted(df[param].unique()):
+            y_values = df[df[param] == value]['Max'].values
+            plt.scatter([value] * len(y_values), y_values, label=f"{param}={value}")
+        plt.xlabel(param)
+        plt.ylabel("Najlepszy wynik (Max)")
+        plt.title(f"Wpływ {param} na najlepszy wynik")
+        plt.grid(True)
+        plt.tight_layout()
+        save_prefix = 'parameters_comparison'
+        i = 1
+        filename = f"{save_prefix}.png"
+        while os.path.exists(filename):
+            filename = f"{save_prefix}{i}.png"
+            i += 1
+        plt.savefig(filename)
+        plt.show()
+
+def generate_charts_combinations():
+    combinations = [[1, 1], [1, 2], [2, 1], [2, 2]]
+    method_name = {
+        (1, 1): "Ruletka 1-punktowe krzyżowanie",
+        (1, 2): "Ruletka 2-punktowe krzyżowanie",
+        (2, 1): "Turniej 1-punktowe krzyżowanie",
+        (2, 2): "Turniej 2-punktowe krzyżowanie"
+    }
+    grouped_results = defaultdict(list)
+    for row in for_combinations:
+        key = (row[0], row[1], row[2], row[3])
+        grouped_results[key].append(row)
+    for params, results in grouped_results.items():
+        plt.figure(figsize=(8, 6))
+        methods = []
+        values = []
+        for i, row in enumerate(results):
+            crossover_type, selection_type = combinations[i]
+            method = method_name[(crossover_type, selection_type)]
+            methods.append(method)
+            values.append(row[5])
+        plt.bar(methods, values, color=['skyblue', 'lightgreen', 'salmon', 'gold'])
+        plt.ylabel("Najlepszy wynik", fontsize=12)
+        plt.xlabel("Metoda selekcji i krzyżowania", fontsize=12)
+        plt.title(f"Porównanie metod dla parametrów:\nPc={params[0]}, Pm={params[1]}, N={params[2]}, T={params[3]}",
+                  fontsize=14)
+        plt.grid(axis='y', linestyle='--', alpha=0.7)
+        plt.tight_layout()
+        filename = f"comparison_Pc{params[0]}_Pm{params[1]}_N{params[2]}_T{params[3]}.png"
+        i = 1
+        while os.path.exists(filename):
+            filename = f"comparison_Pc{params[0]}_Pm{params[1]}_N{params[2]}_T{params[3]}_{i}.png"
+            i += 1
+        plt.savefig(filename)
+        plt.show()
 
 if __name__ == '__main__':
     df1 = pd.read_csv('parameters.csv')
-    chromoseome_length = 26
     eliticism_rate = 0.25
-    for i in range(5):
-        ga = GeneticAlgorithm(df1['N'].values[0], 26, df1['pm'].values[0], df1['pc'].values[0], eliticism_rate, df1['T'].values[0], crossover_type=df1['crossover_type'].values[0], selection_type=df1['selection_type'].values[0])
-        x = ga.run()
-    save_best_results()
-    print(x)
+    chromosome_length = 26
+    combinations = [[1, 1], [1, 2], [2, 1], [2, 2]]
+    for z in combinations:
+        for x in range(len(df1)):
+            for y in range(5):
+                #crossover_type = int(df1.at[df1.index[x], 'crossover_type'])
+                #election_type = int(df1.at[df1.index[x], 'selection_type'])
+                N = int(df1.at[df1.index[x], 'N'])
+                pm = float(df1.at[df1.index[x], 'pm'])
+                pc = float(df1.at[df1.index[x], 'pc'])
+                T = int(df1.at[df1.index[x], 'T'])
+                ga = GeneticAlgorithm(N, chromosome_length, pm, pc, eliticism_rate, T, crossover_type=z[0],
+                                      selection_type=z[1])
+                o = ga.run()
+                print(o)
+            df2 = save_best_results()
+            for_combinations.append(df2.iloc[0])
+            for file in os.listdir("."):
+                if file.startswith("results"):
+                    os.remove(file)
+        analyse_results()
+        create_chart_param_comparison()
+    generate_charts_combinations()
 
-
-'''
-Dla każdego uruchomienia zapisz:
-najlepsze rozwiązanie (wartość plecaka i jego zawartość),
-najgorsze rozwiązanie,
-średnią wartość rozwiązania w populacji w każdej iteracji,
-czas wykonania.
-Zapisz wyniki w tabelach lub plikach CSV (aby można było je potem łatwo porównać i narysować wykresy).
-'''
