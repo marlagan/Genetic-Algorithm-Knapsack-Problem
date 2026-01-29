@@ -21,7 +21,6 @@ from vrptw import load_solomon_instance
 
 
 BKS: Dict[str, Dict[str, float]] = {
-    # Best-known solutions for Solomon 100-customer (classic). Distances & vehicles.
     "C101": {"vehicles": 10, "distance": 828.94},
     "R101": {"vehicles": 19, "distance": 1650.8},
     "RC101": {"vehicles": 14, "distance": 1696.95},
@@ -127,6 +126,41 @@ def plot_routes_xy(inst_path: str | Path, routes: List[List[int]], out_png: Path
     plt.savefig(out_png)
     plt.close()
 
+def plot_parameter_comparison(df: pd.DataFrame, param_name: str, out_png: Path, title: str) -> None:
+    plt.figure(figsize=(9, 5))
+    for val in sorted(df[param_name].unique()):
+        subset = df[df[param_name] == val]
+        plt.plot(subset['Run'], subset['Distance'], marker='o', label=f"{param_name}={val}")
+    plt.xlabel("Uruchomienie")
+    plt.ylabel("Najlepszy dystans")
+    plt.title(title)
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(out_png)
+    plt.close()
+
+def plot_best_worst_avg(histories: List[List[float]], out_png: Path, title: str) -> None:
+    max_len = max(len(h) for h in histories)
+    padded_hist = np.array([h + [h[-1]]*(max_len-len(h)) for h in histories], dtype=float)
+    best = np.min(padded_hist, axis=0)
+    worst = np.max(padded_hist, axis=0)
+    avg = np.mean(padded_hist, axis=0)
+
+    plt.figure(figsize=(9, 5))
+    plt.plot(range(1, max_len+1), best, label="Najlepszy", color="green")
+    plt.plot(range(1, max_len+1), worst, label="Najgorszy", color="red")
+    plt.plot(range(1, max_len+1), avg, label="Średni", color="blue", linestyle="--")
+    plt.xlabel("Generacja")
+    plt.ylabel("Koszt")
+    plt.title(title)
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(out_png)
+    plt.close()
 
 def run_instance(inst_path: str | Path, params: GAParams, runs: int = 5, out_dir: str | Path = "vrptw_results") -> pd.DataFrame:
     inst = load_solomon_instance(inst_path)
@@ -163,7 +197,6 @@ def run_instance(inst_path: str | Path, params: GAParams, runs: int = 5, out_dir
             "Params": json.dumps(asdict(p), ensure_ascii=False),
         })
 
-        # store best solution of this run
         (out_dir / f"best_routes_run{run + 1}.json").write_text(
             json.dumps({"routes": res["best_routes"], "perm": res["best_perm"]}, ensure_ascii=False, indent=2),
             encoding="utf-8",
@@ -172,7 +205,6 @@ def run_instance(inst_path: str | Path, params: GAParams, runs: int = 5, out_dir
     df = pd.DataFrame(rows)
     df.to_csv(out_dir / "runs.csv", index=False)
 
-    # stats
     stats = {
         "Instance": _norm_instance_name(inst.name),
         "File": str(Path(inst_path).as_posix()),
@@ -203,6 +235,8 @@ def run_instance(inst_path: str | Path, params: GAParams, runs: int = 5, out_dir
 
     return df
 
+params_df = pd.read_csv("parameters.csv")
+ga_params_list = []
 
 if __name__ == "__main__":
     instances = find_instances()
@@ -210,22 +244,41 @@ if __name__ == "__main__":
         print("No instance files found. Put Solomon *.txt files under ./data or ./data/solomon")
         raise SystemExit(1)
 
-    params = GAParams(
-        population_size=80,
-        iterations=400,
-        crossover_rate=0.9,
-        mutation_rate=0.25,
-        elitism_rate=0.1,
-        selection_type="tournament",
-        crossover_type="ox",
-        tournament_k=3,
-        penalty_tw=5000.0,
-        penalty_overload=5000.0,
-        penalty_vehicle=50.0,
-        use_local_search=True,
-        ls_max_iters=60,
-        seed=12345,
-    )
+    for _, row in params_df.iterrows():
+        crossover_map = {1: "ox", 2: "pmx"}
+        selection_map = {1: "tournament", 2: "roulette"}
+
+        p = GAParams(
+            population_size=int(row["N"]),
+            iterations=int(row["T"]),
+            crossover_rate=float(row["pc"]),
+            mutation_rate=float(row["pm"]),
+            elitism_rate=0.1,
+            selection_type="tournament",
+            crossover_type="ox",
+            tournament_k=3,
+            penalty_tw=5000.0,
+            penalty_overload=5000.0,
+            penalty_vehicle=50.0,
+            use_local_search=True,
+            ls_max_iters=60,
+            seed=12345,
+        )
+        ga_params_list.append(p)
 
     for inst_path in instances:
-        run_instance(inst_path, params, runs=5, out_dir="vrptw_results")
+        out_dirs = []
+        for p in ga_params_list:
+            out_dir = Path(
+                f"vrptw_results/{_norm_instance_name(inst_path.name)}_pc{p.crossover_rate}_pm{p.mutation_rate}_N{p.population_size}_T{p.iterations}")
+            out_dirs.append(out_dir)
+            run_instance(inst_path, p, runs=5, out_dir=out_dir)
+
+        all_results = pd.concat([pd.read_csv(out_dir / "runs.csv") for out_dir in out_dirs])
+
+        plot_parameter_comparison(
+            all_results,
+            "pc",
+            Path(f"vrptw_results/{_norm_instance_name(inst_path.name)}_param_comparison.png"),
+            title=f"{_norm_instance_name(inst_path.name)}: porównanie parametrów"
+        )

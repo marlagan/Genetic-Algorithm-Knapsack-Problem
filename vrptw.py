@@ -188,7 +188,6 @@ def evaluate_route(route: List[int], inst: VRPTWInstance) -> RouteSchedule:
         t = s + cust.service_time
         prev = cid
 
-    # return to depot
     distance_acc += float(inst.dist[prev, 0])
 
     return RouteSchedule(route=route, arrival=arrival, start=start, load=load, distance=distance_acc, tw_late=tw_late)
@@ -209,7 +208,6 @@ def decode_greedy(chromosome: List[int], inst: VRPTWInstance) -> Solution:
         r = evaluate_route(trial, inst)
         if r.load > inst.capacity:
             return False
-        # keep it mostly feasible: don't allow huge lateness in decoder
         return r.tw_late <= 0.0
 
     for cid in chromosome:
@@ -258,12 +256,10 @@ def two_opt_route(route: List[int], inst: VRPTWInstance) -> List[int]:
 
 def local_search_solution(sol: Solution, inst: VRPTWInstance, max_iters: int = 50) -> Solution:
     """Hybrid improvement: 2-opt inside each route + simple relocate between routes (first improvement)."""
-    # 2-opt within routes
     routes = [r.route[:] for r in sol.routes]
     for i, r in enumerate(routes):
         routes[i] = two_opt_route(r, inst)
 
-    # relocate between routes
     it = 0
     while it < max_iters:
         it += 1
